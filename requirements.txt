@@ -5,4 +5,3 @@ qdrant-client
 pandas
 python-dotenv
 numpy==1.24.4
-venv/

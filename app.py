@@ -22,8 +22,7 @@ def recommend():
     search_results = search_similar_courses(job_vector, limit=5)
 
     recommendations = [
-        {"name": result.payload["name"], "description": result.payload["description"], "score": result.score}
-        for result in search_results
+        result.id for result in search_results
     ]
 
     return jsonify({"recomendaciones": recommendations})

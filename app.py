@@ -1,31 +1,31 @@
 from uuid import uuid4
 from flask import Flask, request, jsonify
 from embeddings.embedder import generate_embedding
-from qdrant.qdrant_manager import initialize_qdrant, upsert_course, search_similar_courses
+from qdrant.qdrant_manager import initialize_qdrant, upsert_course, search_similar_courses, retrieve_course
 import pandas as pd
+from utils.helpers import cleaner
 
 app = Flask(__name__)
 
 initialize_qdrant()
 
-@app.route("/recommend", methods=["GET"])
+@app.route("/recommend", methods=["POST"])
 def recommend():
-    data = request.get_json()
-    vacant_name = data.get("name", "")
-    vacant_description = data.get("description", "")
+    data = request.get_json()  
+    vacant_name = data.get("vacant_name", "")
+    vacant_description = data.get("vacant_description", "")
 
     if not vacant_name or not vacant_description:
-        return jsonify({"error": "Debe proporcionar nombre y descripción de la vacante"}), 400
+        return jsonify({"error": "Name and description for vacancy is not provided."}), 400
 
     job_vector = generate_embedding(vacant_name + " " + vacant_description)
-
     search_results = search_similar_courses(job_vector, limit=5)
 
     recommendations = [
         result.id for result in search_results
     ]
 
-    return jsonify({"recomendaciones": recommendations})
+    return jsonify({"recomendations": recommendations})
 
 @app.route("/load-course", methods=["POST"])
 def load_course():
@@ -49,7 +49,7 @@ def load_course():
             vector=vector
         )
 
-        return jsonify({"message": "Curso almacenado exitosamente.", "course_id": course_id}), 201
+        return jsonify({"message": "Course saved successfully.", "course_id": course_id}), 201
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -57,7 +57,7 @@ def load_course():
 
 @app.route("/ping", methods=["GET"])
 def index():
-    return "API de recomendación de cursos"
+    return "Course Recommender API is running."
 
 @app.route("/load-courses", methods=["POST"])
 def load_courses():
@@ -65,7 +65,7 @@ def load_courses():
         data = request.json
 
         if not data or "courses" not in data:
-            return jsonify({"error": "Faltan datos o la clave 'courses' no está presente."}), 400
+            return jsonify({"error": "Missing data or 'courses' key is not provided."}), 400
 
         courses = data["courses"]
 
@@ -79,10 +79,29 @@ def load_courses():
             upsert_course(course_id=course_id, name=name, description=description, vector=vector)
 
         print(f"Se almacenaron {len(courses)} cursos.")
-        return jsonify({"message": "Cursos almacenados exitosamente."}), 201
+        return jsonify({"message": "Course saved successfully."}), 201
 
     except Exception as e:
         print(e)
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/get-courses", methods=["GET"])
+def get_courses():
+    try:
+        data = request.json
+        if not data or "id_courses" not in data:
+            return jsonify({"error": "Missing 'id' in the request parameters"}), 400
+        
+        courses = data["id_courses"]
+        results = []
+        for course in courses:
+            result = retrieve_course(course)
+            if result:
+                results.append(result)
+            else:
+                results.append({"error": f"Course with ID {course} not found."})
+        return jsonify({"courses": results}), 200
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":

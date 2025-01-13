@@ -72,3 +72,25 @@ def search_similar_courses(vector, limit=5):
         print("Error searching similar courses:", e)
         return []
 
+def retrieve_course(id):
+    try:
+        response = client.retrieve(
+            collection_name=Config.COLLECTION_NAME,
+            ids=[id]
+        )
+        if response:
+            result = [
+                {
+                    "id": record.id,
+                    "vector": record.vector,
+                    "payload": record.payload
+                }
+                for record in response
+            ]
+            return result[0] if result else None
+        else:
+            print(f"Failed to get point with ID {id}. Response: {response}")
+            return None
+    except Exception as e:
+        print(f"Error getting course {id}: {e}")
+        return None

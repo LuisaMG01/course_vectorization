@@ -1,5 +1,6 @@
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.http.models import PointIdsList, Filter, FieldCondition, MatchValue, FilterSelector
 from config import Config
 import pandas as pd
 from transformers import pipeline
@@ -94,3 +95,53 @@ def retrieve_course(id):
     except Exception as e:
         print(f"Error getting course {id}: {e}")
         return None
+
+def delete_course(point_id):
+    try:
+        client.delete(
+            collection_name=Config.COLLECTION_NAME,
+            points_selector=PointIdsList(
+                points=[point_id]
+            )
+        )
+        print(f"Course {point_id} deleted successfully.")
+    except Exception as e:
+        print(f"Error deleting course {point_id}: {e}")
+
+def get_all_point_ids():
+    try:
+        all_points = []
+        offset = None
+        
+        while True:
+            results = client.scroll(
+                collection_name=Config.COLLECTION_NAME,
+                limit=100, 
+                offset=offset
+            )[0]
+            
+            if not results:
+                break
+                
+            point_ids = [point.id for point in results]
+            all_points.extend(point_ids)
+            
+            if len(results) < 100: 
+                break
+                
+        return all_points
+    except Exception as e:
+        print(f"Error getting point IDs: {e}")
+        raise e
+
+def delete_all_courses():
+    try:
+        all_point_ids = get_all_point_ids()
+        
+        for point_id in all_point_ids:
+            delete_course(point_id)
+            
+        return len(all_point_ids)
+    except Exception as e:
+        print(f"Error deleting all courses: {e}")
+        raise e

@@ -1,7 +1,7 @@
 from uuid import uuid4
 from flask import Flask, request, jsonify
 from embeddings.embedder import generate_embedding
-from qdrant.qdrant_manager import initialize_qdrant, upsert_course, search_similar_courses, retrieve_course
+from qdrant.qdrant_manager import *
 import pandas as pd
 from utils.helpers import cleaner
 
@@ -9,23 +9,38 @@ app = Flask(__name__)
 
 initialize_qdrant()
 
-@app.route("/recommend", methods=["POST"])
+@app.route("/recommend", methods=["POST", "GET"])
 def recommend():
-    data = request.get_json()  
-    vacant_name = data.get("vacant_name", "")
-    vacant_description = data.get("vacant_description", "")
+    try:
+        if request.method == "POST":
+            data = request.get_json()
+        else:
+            data = {
+                "vacant_name": request.args.get("vacant_name", ""),
+                "vacant_description": request.args.get("vacant_description", "")
+            }
 
-    if not vacant_name or not vacant_description:
-        return jsonify({"error": "Name and description for vacancy is not provided."}), 400
+        if not data:
+            return jsonify({"error": "Missing request data"}), 400
 
-    job_vector = generate_embedding(vacant_name + " " + vacant_description)
-    search_results = search_similar_courses(job_vector, limit=5)
+        vacant_name = data.get("vacant_name", "")
+        vacant_description = data.get("vacant_description", "")
 
-    recommendations = [
-        result.id for result in search_results
-    ]
+        if not vacant_name or not vacant_description:
+            return jsonify({"error": "Name and description for vacancy is not provided."}), 400
 
-    return jsonify({"recomendations": recommendations})
+        job_vector = generate_embedding(vacant_name + " " + vacant_description)
+        search_results = search_similar_courses(job_vector, limit=5)
+
+        recommendations = [result.id for result in search_results]
+
+        if not recommendations:
+            return jsonify({"recommendations": []}), 200
+
+        return jsonify({"recommendations": recommendations}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route("/load-course", methods=["POST"])
 def load_course():
@@ -103,6 +118,31 @@ def get_courses():
         return jsonify({"courses": results}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route("/delete-course", methods=["DELETE"])
+def delete_course_endpoint(): 
+    try:
+        data = request.json
+        if not data or "point_id" not in data:
+            return jsonify({"error": "Missing 'id' in the request parameters"}), 400
+
+        course_id = data["point_id"]
+        delete_course(course_id)  
+        return jsonify({"message": f"Course with ID {course_id} deleted successfully."}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+@app.route("/delete-all-courses", methods=["DELETE"])
+def delete_all_courses_endpoint():
+    try:
+        delete_all_courses()
+        return jsonify({
+            "message": "All courses have been deleted successfully."
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 if __name__ == "__main__":
     from config import Config

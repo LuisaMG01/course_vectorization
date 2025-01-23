@@ -78,26 +78,61 @@ def index():
 def load_courses():
     try:
         data = request.json
-
+        
         if not data or "courses" not in data:
             return jsonify({"error": "Missing data or 'courses' key is not provided."}), 400
 
         courses = data["courses"]
+        processed_courses = []
+        errors = []
 
         for course in courses:
-            course_id = course["id"]
-            name = course["name"]
-            description = course["description"]
-            text = f"{name}. {description}"
-            vector = generate_embedding(text)
+            try:
+                if not all(key in course for key in ["id", "name", "description"]):
+                    errors.append(f"Invalid course data: {course}")
+                    continue
 
-            upsert_course(course_id=course_id, name=name, description=description, vector=vector)
+                course_id = course["id"]
+                name = course["name"]
+                description = course["description"]
 
-        print(f"Se almacenaron {len(courses)} cursos.")
-        return jsonify({"message": "Course saved successfully."}), 201
+                text = f"{name}. {description}"
+                try:
+                    vector = generate_embedding(text)
+                except Exception as embed_error:
+                    errors.append(f"Embedding generation failed for course {course_id}: {str(embed_error)}")
+                    continue
+
+                try:
+                    upsert_course(
+                        course_id=course_id,
+                        name=name,
+                        description=description,
+                        vector=vector
+                    )
+                    processed_courses.append(course_id)
+                except Exception as upsert_error:
+                    errors.append(f"Upsert failed for course {course_id}: {str(upsert_error)}")
+
+            except Exception as course_error:
+                errors.append(f"Unexpected error processing course: {str(course_error)}")
+
+        response = {
+            "message": "Course processing completed",
+            "processed_courses_count": len(processed_courses),
+            "processed_course_ids": processed_courses
+        }
+
+        if errors:
+            response["errors"] = errors
+            print("Errors during course processing:", errors)
+
+        print(f"Processed {len(processed_courses)} out of {len(courses)} courses")
+
+        return jsonify(response), 201 if not errors else 206
 
     except Exception as e:
-        print(e)
+        print(f"Critical error in load_courses: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/get-courses", methods=["GET"])

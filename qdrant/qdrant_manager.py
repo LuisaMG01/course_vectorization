@@ -16,28 +16,25 @@ client = QdrantClient(
 def initialize_qdrant():
     try:
         existing_collections = client.get_collections()
-        print("Existing collections response:", existing_collections)
-        
-        if isinstance(existing_collections, dict) and 'collections' in existing_collections:
-            existing_collection_names = [
-                col['name'] for col in existing_collections['collections']
-            ]  
-        else:
-            existing_collection_names = []  
+        existing_collection_names = [col.name for col in existing_collections.collections]
 
         if Config.COLLECTION_NAME not in existing_collection_names:
-            client.create_collection(
-                collection_name=Config.COLLECTION_NAME,
-                vectors_config=VectorParams(size=768, distance=Distance.COSINE),
-                timeout=60 
-            )
-            print("Collection created successfully")
+            try:
+                client.create_collection(
+                    collection_name=Config.COLLECTION_NAME,
+                    vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+                    timeout=60 
+                )
+                print("Collection created successfully")
+            except Exception as e:
+                if "already exists" in str(e):
+                    print(f"Collection '{Config.COLLECTION_NAME}' already exists. Skipping creation.")
+                else:
+                    raise e
         else:
             print(f"Collection '{Config.COLLECTION_NAME}' already exists. Using existing collection.")
     except Exception as e:
         print("Error initializing Qdrant:", e)
-
-
 
 def upsert_course(course_id, name, description, vector):
     try:
@@ -114,22 +111,28 @@ def get_all_point_ids():
         offset = None
         
         while True:
-            results = client.scroll(
+            results, next_offset = client.scroll(
                 collection_name=Config.COLLECTION_NAME,
-                limit=100, 
+                limit=100,
                 offset=offset
-            )[0]
+            )
+            
+            print(f"Retrieved {len(results)} points.")
             
             if not results:
                 break
-                
+            
             point_ids = [point.id for point in results]
             all_points.extend(point_ids)
             
-            if len(results) < 100: 
+            offset = next_offset
+            
+            if len(results) < 100:
                 break
-                
+        
+        print(f"Found {len(all_points)} points.")
         return all_points
+    
     except Exception as e:
         print(f"Error getting point IDs: {e}")
         raise e
@@ -141,7 +144,7 @@ def delete_all_courses():
         for point_id in all_point_ids:
             delete_course(point_id)
             
-        return len(all_point_ids)
+        return len(all_point_ids) 
     except Exception as e:
         print(f"Error deleting all courses: {e}")
         raise e
